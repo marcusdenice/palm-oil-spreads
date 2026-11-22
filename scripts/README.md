@@ -4,10 +4,10 @@ These scripts run on your own computer, **before** any data is uploaded to
 Databricks. USDA's Branded Foods releases are about 3 GB each, so the files
 are explored and shrunk locally first.
 
-| Script | Purpose | Output |
-|---|---|---|
-| `profile_release.py` | First look at a raw release: columns, a sample row, and categories | `data_exploration/<release>/categories.csv` |
-
+| Step | Script | Purpose | Output |
+|---|---|---|---|
+| 1 | `profile_release.py` | First look at a raw release: columns, a sample row, and categories | `data_exploration/<release>/categories.csv` |
+| 2 | `filter_release.py` | Shrinks a release to the project's categories and columns before upload | `data/filtered/release=<release>/*.csv.gz` |
 ---
 
 ## profile_release.py
@@ -66,3 +66,65 @@ in the project. The marked list becomes the category mapping seed in `seeds/`.
 - Only the category column is read for the counts, which keeps the run fast
   on a 3 GB file.
 - Raw USDA files are **not** stored in this repo. Download them from USDA.
+  
+---
+
+## filter_release.py
+
+### What it does
+1. Keeps only rows in the project's categories, using an exact name match
+2. Keeps only the columns the project needs
+3. Saves `branded_food.csv.gz` and `food.csv.gz`, compressed for upload
+
+Every product in the chosen categories is kept. There is **no ingredient
+filter**: palm oil detection happens later, in the silver layer, so the
+project can measure the share of products with palm oil and see products
+that removed it.
+
+### Before you run it
+Run `profile_release.py` on the same release first, and check that the names
+in `CATEGORIES_TO_KEEP` appear in its `categories.csv`. Older releases may
+use different category names.
+
+### Settings
+| Setting | Meaning | Example |
+|---|---|---|
+| `RELEASE_LABEL` | Release in YYYY-MM format, matching the Databricks volume folder | `2026-10` |
+| `SOURCE_FOLDER` | Folder containing the unzipped USDA CSVs | `FoodData_Central_branded_food_2026_10_29` |
+| `CATEGORIES_TO_KEEP` | Exact USDA category names to keep | `["Nut & Seed Butters"]` |
+| `BRANDED_FOOD_COLUMNS` | Columns kept from `branded_food.csv` | See the script |
+| `FOOD_COLUMNS` | Columns kept from `food.csv` | See the script |
+
+### How to run (Windows)
+1. Open the script's folder in File Explorer.
+2. Type `cmd` in the address bar and press Enter.
+3. Run:
+   ```
+   python filter_release.py
+   ```
+
+### Output
+```
+data/filtered/release=<release>/
+├── branded_food.csv.gz
+└── food.csv.gz
+```
+
+Upload both files to:
+```
+/Volumes/palm/bronze/raw_files/usda_branded/release=<release>/
+```
+
+### Checks built into the script
+- Stops if either source CSV is missing
+- Stops if no rows match `CATEGORIES_TO_KEEP`, which usually means a
+  category name is spelled differently in that release
+- Warns if the two output files have different row counts
+
+### Notes
+- Every value is read as text, so barcodes keep their leading zeros.
+- Files are read in chunks of 200,000 rows to keep memory use low.
+- Filtering before upload is a deliberate tradeoff: bronze holds a subset of
+  USDA's data, not a full copy. To widen the scope, add categories and rerun.
+- The `data/` folder is not stored in this repo.
+
